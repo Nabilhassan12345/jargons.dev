@@ -1,62 +1,68 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
+import path from "node:path";
 import registerGitHubApp from "./lib/register-github-app/index.js";
 
-// Helper function to write .env file with actual values
-async function writeEnvFile(envObj) {
-  const envContent = Object.entries(envObj)
-    .map(([key, value]) => `${key}=${value}`)
-    .join('\n');
-  await fs.writeFile('.env', envContent);
-  console.log('[setup] ✅ Created .env file with GitHub App credentials');
-}
+// --- Setup helpers: safe .env writer & fallback ---
 
-// Helper function to write .env.example file with placeholders
-async function writeEnvExample(envObj) {
-  const envContent = Object.entries(envObj)
-    .map(([key, value]) => `${key}=${value}`)
-    .join('\n');
-  await fs.writeFile('.env.example', envContent);
-  console.log('[setup] ✅ Created .env.example file with placeholders');
-}
-
-// Generic callback helper for when GitHub App is received
-function onReceivedGitHubApp(appObj, res) {
-  console.log(`[setup] 📱 Received GitHub App: ${appObj.name} (ID: ${appObj.id})`);
-  
-  // Check if we have the required credentials
-  if (appObj.id && appObj.client_id) {
-    // Write .env with actual values
-    const envObj = {
-      GITHUB_APP_ID: appObj.id,
-      GITHUB_APP_PRIVATE_KEY: `"${appObj.pem.replace(/\n/g, '\\n')}"`,
-      PUBLIC_PROJECT_REPO: `"${appObj.owner.login}/jargons.dev-test"`,
-      PUBLIC_PROJECT_REPO_BRANCH_REF: '"refs/heads/main"'
-    };
-    writeEnvFile(envObj);
-  } else {
-    // Write .env.example with placeholders
-    const envObj = {
-      GITHUB_APP_ID: 'your-github-app-id',
-      GITHUB_APP_PRIVATE_KEY: '"your-github-app-private-key"',
-      PUBLIC_PROJECT_REPO: '"your-username/jargons.dev-test"',
-      PUBLIC_PROJECT_REPO_BRANCH_REF: '"refs/heads/main"'
-    };
-    writeEnvExample(envObj);
+function writeEnvFile(envObj) {
+  try {
+    const lines = Object.entries(envObj).map(([k, v]) => `${k}=${String(v || '')}`);
+    const file = path.resolve(process.cwd(), '.env');
+    fsSync.writeFileSync(file, lines.join('\n') + '\n', { encoding: 'utf8' });
+    console.log(`[setup] .env written to ${file}`);
+  } catch (err) {
+    console.error('[setup] Failed to write .env:', err && err.message ? err.message : err);
   }
-  
-  // Respond to browser
-  res.writeHead(200, { "Content-Type": "text/html" });
-  res.end(`
-    <meta charset="utf-8">
-    <h1>GitHub App registered successfully</h1>
-    <p>Environment file has been created. You can now close this window.</p>
-  `);
 }
 
-// Add 2-minute friendly timeout
+function writeEnvExample(envObj) {
+  try {
+    const file = path.resolve(process.cwd(), '.env.example');
+    const lines = Object.entries(envObj).map(([k, v]) => `${k}=${v ? v : `YOUR_${k}`}`);
+    fsSync.writeFileSync(file, lines.join('\n') + '\n', { encoding: 'utf8' });
+    console.log(`[setup] .env.example written to ${file}`);
+  } catch (err) {
+    console.error('[setup] Failed to write .env.example:', err && err.message ? err.message : err);
+  }
+}
+// --- end helpers ---
+
+async function onReceivedGitHubApp(appObj, res) {
+  try {
+    if (!appObj) {
+      console.log('[setup] Callback received but no app data');
+      res && res.end && res.end('Setup: no app data received. Check terminal for details.');
+      return;
+    }
+
+    console.log('[setup] Received GitHub App:', { id: appObj.id, name: appObj.name });
+
+    const envObj = {
+      GITHUB_APP_ID: appObj.id || '',
+      GITHUB_APP_CLIENT_ID: appObj.client_id || '',
+      GITHUB_APP_CLIENT_SECRET: appObj.client_secret || '',
+      GITHUB_APP_WEBHOOK_SECRET: appObj.webhook_secret || ''
+    };
+
+    if (envObj.GITHUB_APP_ID && envObj.GITHUB_APP_CLIENT_ID) {
+      writeEnvFile(envObj);
+      res && res.end && res.end('Setup complete — .env created locally. Check your repo root.');
+    } else {
+      console.log('[setup] Incomplete app data; writing .env.example as fallback');
+      writeEnvExample(envObj);
+      res && res.end && res.end('Partial setup — .env.example created. Please fill missing values and rerun.');
+    }
+  } catch (err) {
+    console.error('[setup] Error in callback handler:', err && err.message ? err.message : err);
+    res && res.end && res.end('Setup failed — check terminal logs.');
+  }
+}
+
+// Add 2-minute friendly timeout log after server start
 setTimeout(() => {
-  console.log('[setup] ⏰ Setup process has been running for 2 minutes. If you haven\'t completed the GitHub App registration yet, please check your browser.');
+  console.log('[setup] If no callback is received, ensure you opened the printed URL in a browser logged into GitHub or use ngrok/curl to simulate the callback.');
 }, 120000);
 
 // register app and retrieve credentials
