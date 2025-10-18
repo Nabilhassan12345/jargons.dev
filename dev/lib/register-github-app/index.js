@@ -74,31 +74,36 @@ export default async function registerGitHubApp(
 
         console.log(appCredentials);
 
-        response.writeHead(200, { "Content-Type": "text/html" });
-        response.end(`
-          <meta charset="utf-8">
-          <h1>GitHub App registered successfully</h1>
-          <p>
-            Now follow this steps below..
-            <ul>
-              <li>
-                Create a new github repository with name "jargons.dev-test" at <a target="_blank" href="https://github.com/new">https://github.com/new</a>
-              </li>
-              <li>
-                Copy and paste the repo name in full as value to the "PUBLIC_PROJECT_REPO" in the newly created .env; 
-                <br>
-                Example: (assuming you chose the suggested name)
-                <br>
-                <code>
-                  PUBLIC_PROJECT_REPO="${appCredentials.owner.login}/jargons.dev-test"
-                </code>
-              </li>
-              <li>
-                Then follow this link to install the app on the repo <a href="${appCredentials.html_url}">${appCredentials.html_url}</a>. 
-              </li>
-            </ul>
-          </p>
-        `);
+        // Use callback if provided, otherwise use default response
+        if (metaOptions.onReceivedGitHubApp) {
+          metaOptions.onReceivedGitHubApp(appCredentials, response);
+        } else {
+          response.writeHead(200, { "Content-Type": "text/html" });
+          response.end(`
+            <meta charset="utf-8">
+            <h1>GitHub App registered successfully</h1>
+            <p>
+              Now follow this steps below..
+              <ul>
+                <li>
+                  Create a new github repository with name "jargons.dev-test" at <a target="_blank" href="https://github.com/new">https://github.com/new</a>
+                </li>
+                <li>
+                  Copy and paste the repo name in full as value to the "PUBLIC_PROJECT_REPO" in the newly created .env; 
+                  <br>
+                  Example: (assuming you chose the suggested name)
+                  <br>
+                  <code>
+                    PUBLIC_PROJECT_REPO="${appCredentials.owner.login}/jargons.dev-test"
+                  </code>
+                </li>
+                <li>
+                  Then follow this link to install the app on the repo <a href="${appCredentials.html_url}">${appCredentials.html_url}</a>. 
+                </li>
+              </ul>
+            </p>
+          `);
+        }
 
         resolve(appCredentials);
 
